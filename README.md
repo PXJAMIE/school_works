@@ -10,3 +10,4 @@ Here are projects and assignments done in master program of Business Analytics a
 | [[Python Interactive Map] Sales Transactions](https://github.com/PXJAMIE/school_works/tree/master/6211_programming/python_interactive_map) |
 | [[Tableau] Murder Cases in the US 1976-2016](https://github.com/PXJAMIE/school_works/tree/master/6216_workshop) |
 | [[Excel-Crystal Ball] DMA Case Inc. Report](https://github.com/PXJAMIE/school_works/tree/master/6210_decision_risk/excel_project) |
+| [[Excel] NBA GW College Night Pricing for Wizards](https://github.com/PXJAMIE/school_works/tree/master/6214_pricing/final_project) |
