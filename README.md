@@ -1,7 +1,7 @@
 # School Works
 Here are projects and assignments done in master program of Business Analytics at GWU.
 
-## Some major projects
+## Major projects
 
 | Projects |
 | --- |
