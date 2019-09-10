@@ -5,4 +5,4 @@ Here are projects and assignments done in master program of Business Analytics a
 
 | Porjects |
 | --- |
-| [Analysis on Time Duration of Fire Department Calling System (San Francisco)](school_works/6212_data_management/final_project) |
+| [Analysis on Time Duration of Fire Department Calling System (San Francisco)](https://github.com/PXJAMIE/school_works/tree/master/6212_data_management/final_project) |
