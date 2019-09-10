@@ -11,3 +11,5 @@ Here are projects and assignments done in master program of Business Analytics a
 | [[Tableau] Murder Cases in the US 1976-2016](https://github.com/PXJAMIE/school_works/tree/master/6216_workshop) |
 | [[Excel-Crystal Ball] DMA Case Inc. Report](https://github.com/PXJAMIE/school_works/tree/master/6210_decision_risk/excel_project) |
 | [[Excel] NBA GW College Night Pricing for Wizards](https://github.com/PXJAMIE/school_works/tree/master/6214_pricing/final_project) |
+| [[R-markdown] Social Networks Analysis for often-contacted and trusted groups](https://github.com/PXJAMIE/school_works/tree/master/6215_social_network/final_project/project_b) |
+| [[R-markdown] Social Networks Analysis within Employees](https://github.com/PXJAMIE/school_works/tree/master/6215_social_network/final_project/project_a) |
