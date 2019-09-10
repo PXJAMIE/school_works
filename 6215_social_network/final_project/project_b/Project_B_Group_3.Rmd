@@ -1,0 +1,851 @@
+---
+title: "SN-Project-B-Group-3"
+author: "Group 3"
+date: "March 9, 2019"
+output: html_document
+---
+
+##Introduction & Conclusion##
+Group 3 - Jamie Pan; Jiaying Liu; Haolin Yang; Lingchen Kong
+
+###Workflow and Approach###
+For this project B, we conduct our analysis approaches and models with the following workflows:
+
+* General descriptions for dataset and analytic questions;
+* Desrptive analysis at both network level and node level;
+* Subgroup and role analysis;
+* Statistical analysis including QAP, ERGM, and TERGM.
+
+###General dscription & Modification to dataset###
+<p>We have two network dataset ('often' and 'trust') and one attribute dataset ('att') for each of the 2015 and 2016 dataset file. <p/>
+<p>In the attribute dataset, the categorical variable (' workgroup', 'attendees', 'sex', 'race') gives out the attribute information about the network member. The rest of variables in the table such as 'cancer' are bianry variables, where '1' indicates 'yes' and '0' for answering 'no'.<p/>
+<p>The 'trust' network dataset gives the trust level of network members on each other, and 'often' network dataset give the level of often contact for network members with each other. Both networks are directed and weightes with higher number indicating higher level.<p/>
+<p>However, when we compare the 'trust' and 'often' datasets for 2015 and 2016, we found taht the network members contained in datasets of different years are not the same. In order to smoothly conduct the TERGM model as test on the network changes through time, we paddled these datasets in two years. So for both data, we contain the orginical data and add the missing network member from another dataset into this one, with the edge value set at 0 by default. The new datasets are named as 'trust11' and 'often11'. Also, before paddling, we had a basic clean up and rename for  better understandale variables for the original dataset as well. The re-organized dataset are named as 'trust1' and 'often1', which are the paddled dataset based on.<p/>
+
+###Conclusion & Major Findings###
+
+Based on our teamwork of model approahces and analysis, we had a deeper look of the often-contact and trust networks, and the following are our major findings:
+
+* There are two important network member, VT8 and VT9. They occurs in both 2015 and 2016 networks, and both of them have extremely high betweenness centrality in both trust and often-contact networks, in both 2015 and 2016. Thus, we can assume that VT8 AND VT9 are acting important roles of imformation transportation and network bridges in this group.
+* The mean distance for trust network is generally lower than it for often-contact network, and the global clustering coefficient for trust nework is generally higher than it for often-contact network. These two findings match with common sense that information transformationa and networking activities is usually faster between trusted people.
+* By community detection, we found that people whitn the same trust communities are more likely to contact each other.
+* By QAP modeling on trust and often-contact networks in 2015 and 2016, we conclude that two networks have strong and siginificant predictive power on each other. This helps to explain the common sense that people are more willing to contact with the person they are trusted with, as well as people are more like to build up trustness by the accumulation of the communications.
+* From the ERGM test, we notice that none of the attributes of network members has significantly strong effects on forming trust ties or often-contact ties. But, the transitivies became an important effect on both networks. Thus, we can conclude that people would not choose to trust or contact with others by their individual background, and it's easier to build trustness on trusted frineds' trust and to be closer friends on frinds' close friends.
+* By TERGM modeling on each of the trust and often-contact networks, we can conclude that both trust and often-contact networks would have much higher probablity of tie occurring with the presense of mutual ties and transitivities, while the trust network contains effect of Attendees attribute with time sliding fron 2015 to 2016.
+
+##Library and Data Preparation##
+```{r}
+# load library
+library(readxl)
+library(igraph)
+library(intergraph)
+library(sna)
+library(ergm)
+library(tergm)
+library(statnet)
+library(ndtv)
+library(htmlwidgets)
+library(latticeExtra)
+```
+
+```{r}
+# The xlsx file with '11' suffix is paddled into a the same size for the tergm analysis
+rm(list=ls())
+trust2015 <- as.data.frame(read_excel("2015/trust11.xlsx"))
+trust2016 <- as.data.frame(read_excel("2016/trust11.xlsx"))
+often2015 <- as.data.frame(read_excel("2015/often11.xlsx"))
+often2016 <- as.data.frame(read_excel("2016/often11.xlsx"))
+att2015<- as.data.frame(read_excel("2015/att.xlsx"))
+att2016<- as.data.frame(read_excel("2016/att.xlsx"))
+
+trust2015 [is.na(trust2015 )] <- 0
+trust2016 [is.na(trust2016 )] <- 0
+often2015 [is.na(often2015 )] <- 0
+often2016 [is.na(often2016 )] <- 0
+att2015[is.na(att2015 )] <- 0
+att2016[is.na(att2016 )] <- 0
+
+of2015 <- data.matrix(often2015[,-1])
+of2016 <- data.matrix(often2016[,-1])
+tru2015 <- data.matrix(trust2015[,-1])
+tru2016 <- data.matrix(trust2016[,-1])
+
+rownames(of2015) <- colnames(often2015)[-1]
+rownames(of2016) <- colnames(often2016)[-1]
+rownames(tru2015) <- colnames(trust2015)[-1]
+rownames(tru2016) <- colnames(trust2016)[-1]
+
+z=2
+of2015 <- ifelse(of2015 > z, 1, 0)
+diag(of2015) <- 0
+of2016 <- ifelse(of2016 > z, 1, 0)
+diag(of2015) <- 0
+tru2015 <- ifelse(tru2015 > z, 1, 0)
+diag(tru2015) <- 0
+tru2016 <- ifelse(tru2016 > z, 1, 0)
+diag(tru2016) <- 0
+
+of2015 <- graph.adjacency(of2015)
+of2016 <- graph.adjacency(of2016)
+tru2015 <- graph.adjacency(tru2015)
+tru2016 <- graph.adjacency(tru2016)
+
+for(cn in colnames(att2015)[-1]) {
+     of2015 <- set_vertex_attr(of2015, cn, 1:nrow(att2015), value = att2015[,cn])
+     tru2015 <- set_vertex_attr(tru2015, cn, 1:nrow(att2015), value = att2015[,cn])
+     
+}
+for(cn in colnames(att2016)[-1]) {
+     of2016 <- set_vertex_attr(of2016, cn, 1:nrow(att2016), value = att2016[,cn])
+     tru2016 <- set_vertex_attr(tru2016, cn, 1:nrow(att2016), value = att2016[,cn])
+}
+```
+
+```{r}
+# The xlsx file with '1' suffix is the original dataset
+trustt2015 <- as.data.frame(read_excel("2015/trust1.xlsx"))
+trustt2016 <- as.data.frame(read_excel("2016/trust1.xlsx"))
+oftenn2015 <- as.data.frame(read_excel("2015/often1.xlsx"))
+oftenn2016 <- as.data.frame(read_excel("2016/often1.xlsx"))
+
+trustt2015 [is.na(trustt2015 )] <- 0
+trustt2016 [is.na(trustt2016 )] <- 0
+oftenn2015 [is.na(oftenn2015 )] <- 0
+oftenn2016 [is.na(oftenn2016 )] <- 0
+
+off2015 <- data.matrix(oftenn2015[,-1])
+off2016 <- data.matrix(oftenn2016[,-1])
+truu2015 <- data.matrix(trustt2015[,-1])
+truu2016 <- data.matrix(trustt2016[,-1])
+
+rownames(off2015) <- colnames(oftenn2015)[-1]
+rownames(off2016) <- colnames(oftenn2016)[-1]
+rownames(truu2015) <- colnames(trustt2015)[-1]
+rownames(truu2016) <- colnames(trustt2016)[-1]
+
+off2015 <- ifelse(off2015 > z, 1, 0)
+diag(off2015) <- 0
+off2016 <- ifelse(off2016 > z, 1, 0)
+diag(off2015) <- 0
+truu2015 <- ifelse(truu2015 > z, 1, 0)
+diag(truu2015) <- 0
+truu2016 <- ifelse(truu2016 > z, 1, 0)
+diag(truu2016) <- 0
+
+off2015 <- graph.adjacency(off2015)
+off2016 <- graph.adjacency(off2016)
+truu2015 <- graph.adjacency(truu2015)
+truu2016 <- graph.adjacency(truu2016)
+
+for(cn in colnames(att2015)[-1]) {
+     off2015 <- set_vertex_attr(off2015, cn, 1:nrow(att2015), value = att2015[,cn])
+     truu2015 <- set_vertex_attr(truu2015, cn, 1:nrow(att2015), value = att2015[,cn])
+     
+}
+for(cn in colnames(att2016)[-1]) {
+     off2016 <- set_vertex_attr(off2016, cn, 1:nrow(att2016), value = att2016[,cn])
+     truu2016 <- set_vertex_attr(truu2016, cn, 1:nrow(att2016), value = att2016[,cn])
+}
+```
+
+There are two kinds of datasets, <trust151.xlsx, trust151.xlsx, often161.xlsx,often161.xlsx> and <trust1511.xlsx, trust1511.xlsx, often1611.xlsx,often1611.xlsx>. The first one with suffix '1' is one before paddle and the second one with suffix '11' is after paddle. 
+
+
+##Descriptive Analysis##
+
+These two datasets have little differences in basic parameters, since the paddling only adds dummy edge value of 0, which would not bias analysis results. Thus, for network level analysis, we conduct the analysis on the paddled dataset only to save time and repeated work and unite the network member. For node level analysis, we conduct the analysis on the un-paddeled dataset only, since the extra members from another year would only show isolates and no edge values at all.
+
+### Descriptive Analysis on paddled 'often - 2015' network###
+```{r}
+#Basic parameters
+#Vertex
+vcount(of2015)
+#Edge
+ecount(of2015)
+#Density
+edge_density(of2015)
+#Shortest Path
+mean_distance(of2015, directed = TRUE)
+#Diameter
+diameter(of2015)
+#In-degree part
+indegree_of2015 <- igraph::degree(of2015, mode = "in")
+#Mean
+mean(indegree_of2015)
+indegree_dist_of2015 <- igraph::degree.distribution(of2015, mode = "in", cumulative = FALSE)
+indegree_cdist_of2015 <- igraph::degree.distribution(of2015, mode = "in", cumulative = TRUE)
+plot(indegree_cdist_of2015, log = "xy", ylim = c(.01, 5), bg = "black", pch = 21,
+     xlab = "In-Degree", ylab = "Cumulative Frequency")
+title("In-degree for often 2015 ", sub = "The average in-degree is 1.040816")
+#Out-degree
+outdegree_of2015 <- igraph::degree(of2015, mode = "out")
+#Mean
+mean(outdegree_of2015)
+outdegree_dist_of2015 <- igraph::degree.distribution(of2015, mode = "out", cumulative = FALSE)
+outdegree_cdist_of2015 <- igraph::degree.distribution(of2015, mode = "out", cumulative = TRUE)
+plot(outdegree_cdist_of2015, log = "xy", ylim = c(.01, 5), bg = "black", pch = 21,xlab ="Out-Degree",ylab = "Cumulative Frequency")
+title("Out-degree for often 2015", sub = "The average in-degree is 1.040816")
+#transitivity
+#Local
+localCC_of2015 <- transitivity(of2015, type = "local")
+localCC_df_of2015 <- data.frame(Name = V(of2015)$name, localCC_of2015)
+localCC_df_of2015 <- localCC_df_of2015[order(localCC_df_of2015$localCC_of2015, decreasing = TRUE),]
+head(localCC_df_of2015, 6)
+#Global
+globalCC_of2015 <- transitivity(of2015)
+globalCC_of2015
+```
+
+Basic Parameters for dataset paddled 'often - 2015':
+
+* Number of Vertex: 49
+* Number of Edge: 51
+* Edge Density: 0.02168367
+* Mean Shortest Path Length: 3.134783
+* Network Diameter: 9
+* Average in-degree: 1.040816
+* Average out-degree: 1.040816
+* Global Clustering Coeffient: 0.2970297
+
+(Findings at next section)
+
+###Descriptive Analysis of paddled 'trust - 2015' network###
+```{r}
+#Vertex
+vcount(tru2015)
+#Edge
+ecount(tru2015)
+#Density
+edge_density(tru2015)
+#Shortest Path
+mean_distance(tru2015)
+#Diameter
+diameter(tru2015)
+#In-degree part
+indegree_tru2015 <- igraph::degree(tru2015, mode = "in")
+#Mean
+mean(indegree_tru2015)
+indegree_dist_tru2015 <- igraph::degree.distribution(tru2015, mode = "in", cumulative = FALSE)
+indegree_cdist_tru2015 <- igraph::degree.distribution(tru2015, mode = "in", cumulative = TRUE)
+plot(indegree_cdist_tru2015, log = "xy", ylim = c(.01, 5), bg = "black", pch = 21,
+     xlab = "In-Degree", ylab = "Cumulative Frequency")
+title("In-degree for trust 2015 ", sub = "The average in-degree is 2.040816")
+#Out-degree
+outdegree_tru2015 <- igraph::degree(tru2015, mode = "out")
+#Mean
+mean(outdegree_tru2015)
+outdegree_dist_tru2015 <- igraph::degree.distribution(tru2015, mode = "out", cumulative = FALSE)
+outdegree_cdist_tru2015 <- igraph::degree.distribution(tru2015, mode = "out", cumulative = TRUE)
+plot(outdegree_cdist_tru2015, log = "xy", ylim = c(.01, 5), bg = "black", pch = 21,xlab ="Out-Degree",ylab = "Cumulative Frequency")
+title("Out-degree for trust 2015", sub = "The average in-degree is 2.040816")
+#Transitivity
+#Local
+localCC_tru2015 <- transitivity(tru2015, type = "local")
+localCC_df_tru2015 <- data.frame(Name = V(tru2015)$name, localCC_tru2015)
+localCC_df_tru2015 <- localCC_df_tru2015[order(localCC_df_tru2015$localCC_tru2015, decreasing = TRUE),]
+head(localCC_df_tru2015, 6)
+#Global
+globalCC_tru2015 <- transitivity(tru2015)
+globalCC_tru2015
+```
+
+Basic Parameters for dataset paddled 'trust - 2015':
+
+* Number of Vertex: 49
+* Number of Edge: 100
+* Edge Density: 0.04251701
+* Mean Shortest Path Length: 2.524561
+* Network Diameter: 5
+* Average in-degree: 2.040816
+* Average out-degree: 2.040816
+* Global Clustering Coeffient: 0.3975265
+
+Findings for paddled 'often - 2015' and 'trust - 2015':
+
+* Both of the cumulative frequency is decreasing when the amount of in-degree or out degree is increasing. The mean value of in-degree and out-degree are the same.
+* The trust 2015 has a slightly higher network density compared with often contact 2015, yet neither of them indicates high network density since they are much smaller than 1. 
+* The mean distance for often 2015 is 3.1348 ,which means one individual can know about 3 other individuals. The mean distance for often 2015 is 2.5246 ,which means one individual can know about 2 other individuals, lower than often 2015. 
+* The often contact 2015 has lower diameters than that of trust 2015, means people get trust to strangers is harder than people get often contact.
+* 'trust 2015' network has higher global clustering coefficient than 'often 2015', which indicates that people would transfer information more to whom they trust, but not necessary to thom they often contract.
+
+###Centrality Analysis###
+```{r}
+#In-degre Centrality
+indegree_off2015 <- igraph::degree(off2015, mode = "in")
+indegree_df_off2015 <- data.frame(Node = V(off2015)$name, indegree_off2015)
+indegree_df_off2015 <- indegree_df_off2015[order(indegree_df_off2015$indegree_off2015, decreasing = TRUE),]
+mean(indegree_df_off2015$indegree_off2015)
+indeg.off2015 <- off2015
+V(indeg.off2015)$size <- indegree_off2015
+E(indeg.off2015)$arrow.size <- 0.2
+set.seed(1234)
+plot(indeg.off2015)
+#Out-degree Centrality
+outdegree_off2015 <- igraph::degree(off2015, mode = "in")
+outdegree_df_off2015 <- data.frame(nodeName = V(off2015)$name, outdegree_off2015)
+outdegree_df_off2015 <- outdegree_df_off2015[order(outdegree_df_off2015$outdegree_off2015, decreasing = TRUE),]
+mean(outdegree_df_off2015$outdegree_off2015)
+outdeg.off2015 <- off2015
+V(outdeg.off2015)$size <- outdegree_off2015
+E(outdeg.off2015)$arrow.size <- 0.2
+set.seed(1234)
+plot(outdeg.off2015)
+#Closeness Centrality
+closeness_off2015 <- igraph::closeness(off2015)
+closeness_df_off2015 <- data.frame(nodeName = V(off2015)$name, closeness_off2015)
+closeness_df_off2015 <- closeness_df_off2015[order(closeness_df_off2015$closeness_off2015, decreasing = TRUE),]
+head(closeness_df_off2015, 7)
+mean(closeness_df_off2015$closeness_off2015)
+clo.off2015 <- off2015
+V(clo.off2015)$size <- closeness_off2015*2500
+E(clo.off2015)$arrow.size <- 0.2
+set.seed(1234)
+plot(clo.off2015)
+#Betweenness Centrality
+betweenness_off2015 <- igraph::betweenness(off2015)
+betweenness_df_off2015 <- data.frame(nodeName = V(off2015)$name, betweenness_off2015)
+betweenness_df_off2015 <- betweenness_df_off2015[order(betweenness_df_off2015$betweenness_off2015, decreasing = TRUE),]
+head(betweenness_df_off2015, 7)
+mean(betweenness_df_off2015$betweenness_off2015)
+bet.off2015 <- off2015
+V(bet.off2015)$size <- betweenness_off2015 / 50
+E(bet.off2015)$arrow.size <- 0.2
+set.seed(1234)
+plot(bet.off2015)
+```
+
+Above are graphs of [In-degree centraility, out-degree centrality, Closeness Centrality, Betweenness Centrality] for unpaddled 'often - 2015' network.
+
+Centrality parameters for unpaddled 'often -2015':
+
+* In-degree centrality mean:1.7
+* Out-degree centrality mean: 1.7
+* Closeness centrality mean: 0.00165
+* Betweenness centrality mean: 16.3667
+
+Findings: 
+
+* Since in-degree and out-degree centrality average is both at 1.7, which indicates people have rather low connections to the rest of the network members.
+* Due to the disconnection in the network, the closeness centrality is somehow biased. Yet the lower average of 0.00165 still tells the close connection within the connected group members.
+* While looking at the betweenness centrality plot and table, we found that VT30, VT8, and VT9 has very high betweenness, about 85 to 100 compared with mean betweenness of 16.37. Thus, we can tell those three person acts an important role of bridges to connect other network members.
+
+```{r}
+#In-degre Centrality
+indegree_truu2015 <- igraph::degree(truu2015, mode = "in")
+indegree_df_truu2015 <- data.frame(Node = V(truu2015)$name, indegree_truu2015)
+indegree_df_truu2015 <- indegree_df_truu2015[order(indegree_df_truu2015$indegree_truu2015, decreasing = TRUE),]
+mean(indegree_df_truu2015$indegree_truu2015)
+indeg.truu2015 <- truu2015
+V(indeg.truu2015)$size <- indegree_truu2015
+E(indeg.truu2015)$arrow.size <- 0.2
+set.seed(1234)
+plot(indeg.truu2015)
+#Out-degree Centrality
+outdegree_truu2015 <- igraph::degree(truu2015, mode = "in")
+outdegree_df_truu2015 <- data.frame(nodeName = V(truu2015)$name, outdegree_truu2015)
+outdegree_df_truu2015 <- outdegree_df_truu2015[order(outdegree_df_truu2015$outdegree_truu2015, decreasing = TRUE),]
+mean(outdegree_df_truu2015$outdegree_truu2015)
+outdeg.truu2015 <- truu2015
+V(outdeg.truu2015)$size <- outdegree_truu2015
+E(outdeg.truu2015)$arrow.size <- 0.2
+set.seed(1234)
+plot(outdeg.truu2015)
+#Closeness Centrality
+closeness_truu2015 <- igraph::closeness(truu2015)
+closeness_df_truu2015 <- data.frame(nodeName = V(truu2015)$name, closeness_truu2015)
+closeness_df_truu2015 <- closeness_df_truu2015[order(closeness_df_truu2015$closeness_truu2015, decreasing = TRUE),]
+head(closeness_df_truu2015, 7)
+mean(closeness_df_truu2015$closeness_truu2015)
+clo.truu2015 <- truu2015
+V(clo.truu2015)$size <- closeness_truu2015*2500
+set.seed(1234)
+plot(clo.truu2015)
+#Betweenness Centrality
+betweenness_truu2015 <- igraph::betweenness(truu2015)
+betweenness_df_truu2015 <- data.frame(nodeName = V(truu2015)$name, betweenness_truu2015)
+betweenness_df_truu2015 <-betweenness_df_truu2015[order(betweenness_df_truu2015$betweenness_truu2015, decreasing = TRUE),]
+head(betweenness_df_truu2015, 7)
+mean(betweenness_df_truu2015$betweenness_truu2015)
+bet.truu2015 <- truu2015
+V(bet.truu2015)$size <- betweenness_truu2015 / 10
+set.seed(1234)
+plot(bet.truu2015)
+```
+
+Above are graphs of [In-degree centraility, out-degree centrality, Closeness Centrality, Betweenness Centrality] for unpaddled 'trust - 2015' network.
+
+Centrality parameters for unpaddled 'trust -2015':
+
+* In-degree centrality mean:3.33
+* Out-degree centrality mean: 3.33
+* Closeness centrality mean: 0.00586
+* Betweenness centrality mean: 28.967
+
+Findings:
+
+* Since in-degree and out-degree centrality average is both at 3.33, which indicates people have rather low connections to the rest of the network members.
+* Due to the disconnection in the network, the closeness centrality is somehow biased. Yet the lower average of 0.00586 still tells the close connection within the connected group members.
+* While looking at the betweenness centrality plot and table, we found that VT9, VT8, and VT7 has very high betweenness, about 140 to 185 compared with mean betweenness of 29. Thus, we can tell those three person acts an important role of bridges to connect other network members.
+* Also, V8 and V9 are aloo important bridges in often contact network.
+
+```{r}
+# for 'often - 2015' network 
+# In-Degree vs Betweenness
+betweenness_of2015 <- igraph::betweenness(of2015)
+plot(betweenness_of2015 ~ indegree_of2015,
+     main = "In-Degree vs Betweenness",
+     xlab = "In-Degree", ylab = "Betweenness")
+#Out-Degree vs Betweenness
+plot(betweenness_of2015 ~ outdegree_of2015,
+     main = "Out-Degree vs Betweenness",
+     xlab = "Out-Degree", ylab = "Betweenness")
+#In-Degree vs. Closeness
+closeness_of2015 <- igraph::closeness(of2015)
+plot(closeness_of2015 ~ indegree_of2015,
+     main = "In-Degree vs Closeness",
+     xlab = "In-Degree", ylab = "Closeness")
+#Out-Degree vs Closeness
+plot(closeness_of2015 ~ outdegree_of2015,
+     main = "Out-Degree and Closeness",
+     xlab = "Out-Degree", ylab = "Closeness")
+#Betweenness vs Closeness
+plot(closeness_of2015 ~ betweenness_of2015,
+     main = "Betweenness and Closeness",
+     xlab = "Betweenness", ylab = "Closeness")
+```
+
+```{r}
+# for 'trust - 2015' network
+# In-Degree vs Betweenness
+betweenness_tru2015 <- igraph::betweenness(tru2015)
+plot(betweenness_tru2015 ~ indegree_tru2015,
+     main = "In-Degree vs Betweenness",
+     xlab = "In-Degree", ylab = "Betweenness")
+#Out-Degree vs Betweenness
+plot(betweenness_tru2015 ~ outdegree_tru2015,
+     main = "Out-Degree vs Betweenness",
+     xlab = "Out-Degree", ylab = "Betweenness")
+#In-Degree vs. Closeness
+closeness_tru2015 <- igraph::closeness(tru2015)
+plot(closeness_of2015 ~ indegree_of2015,
+     main = "In-Degree vs Closeness",
+     xlab = "In-Degree", ylab = "Closeness")
+#Out-Degree vs Closeness
+plot(closeness_tru2015 ~ outdegree_tru2015,
+     main = "Out-Degree and Closeness",
+     xlab = "Out-Degree", ylab = "Closeness")
+#Betweenness vs Closeness
+plot(closeness_tru2015 ~ betweenness_tru2015,
+     main = " Betweenness vs Closeness",
+     xlab = "Betweenness", ylab = "Closeness")
+```
+
+Findings for centrality relationships:
+<p>The relationships between the degree and between, the degree and closeness, the betweenness and closeness are all uncorrelated in often contact and trust networks. Take some situations as examples, there might exist multiple paths in this network, some ego close to some nodes but not close to others. Although a node has many neighbors, it might not become the important node. There might exist multiple paths in this network, some nodes close to some nodes but not close to others.<p/>
+
+<br/>
+<p>Note: We repeat the same approaches as above to the network for 'often - 2016' and 'trust - 2016'. However, the outputs are very similar and we have no any new findings for networks in 2016 nor for comparisons between 2015 and 2016 on descriptive analysis level. Thus, we would skip the repeated works and codes for 2016 on this part,<p/>
+
+##Subgroup & Role Analaysis##
+
+```{r}
+Attributes <- as.data.frame(read_excel("2015/att.xlsx"))
+trust_2015 <- as.matrix(as.data.frame(read_excel("2015/trust1.xlsx"))[,-1])
+collab_2015 <- as.matrix(as.data.frame(read_excel("2015/often1.xlsx"))[,-1])
+
+collab_2015[is.na(collab_2015)] <- 0
+collab_2015 <- ifelse(collab_2015 >= 1, 1, 0)
+trust_2015 <- ifelse(trust_2015 >= 1, 1, 0)
+
+collab_2015_g <- graph.adjacency(collab_2015, 
+                     mode="undirected", 
+                     weighted =NULL) 
+
+trust_2015_g <- graph.adjacency(trust_2015, 
+                            mode="undirected", 
+                            weighted =NULL) 
+
+for(cn in colnames(Attributes)[-1]) {
+  collab_2015_g <- set_vertex_attr(collab_2015_g, cn, 1:nrow(Attributes), value = Attributes[,cn])
+  trust_2015_g <- set_vertex_attr(trust_2015_g, cn, 1:nrow(Attributes), value = Attributes[,cn])
+}
+```
+
+
+###Community Detection for unpaddled 'often - 2015' network###
+```{r}
+set.seed(1122)
+eb <- edge.betweenness.community(collab_2015_g)
+ev <- leading.eigenvector.community(collab_2015_g)
+fg <- fastgreedy.community(collab_2015_g)
+wt <- walktrap.community(collab_2015_g)
+plot (eb,collab_2015_g)
+plot (ev,collab_2015_g)
+plot (fg,collab_2015_g)
+plot (wt,collab_2015_g)
+```
+Findings at below
+
+###Community Detection for unpaddled 'trust - 2015' network###
+```{r}
+set.seed(1122)
+eb <- edge.betweenness.community(trust_2015_g)
+ev <- leading.eigenvector.community(trust_2015_g)
+fg <- fastgreedy.community(trust_2015_g)
+wt <- walktrap.community(trust_2015_g)
+plot (eb,trust_2015_g)
+plot (ev,trust_2015_g)
+plot (fg,trust_2015_g)
+plot (wt,trust_2015_g)
+```
+Finding at below
+
+###Community Detection for unpaddled 'often - 2016' network###
+
+```{r}
+att_2016 <- as.data.frame(read_excel("2016/att.xlsx"))
+trust_2016 <- as.matrix(as.data.frame(read_excel("2016/trust1.xlsx"))[,-1])
+collab_2016 <- as.matrix(as.data.frame(read_excel("2016/often1.xlsx"))[,-1])
+
+collab_2016 <- ifelse(collab_2016 >= 1, 1, 0)
+trust_2016 <- ifelse(trust_2016 >= 1, 1, 0)
+
+collab_2016_g <- graph.adjacency(collab_2016, 
+                                 mode="undirected", 
+                                 weighted =NULL) 
+
+trust_2016_g <- graph.adjacency(trust_2016, 
+                                mode="undirected", 
+                                weighted =NULL) 
+
+for(cn in colnames(att_2016)[-1]) {
+  collab_2016_g <- set_vertex_attr(collab_2016_g, cn, 1:nrow(att_2016), value = att_2016[,cn])
+  trust_2016_g <- set_vertex_attr(trust_2016_g, cn, 1:nrow(att_2016), value = att_2016[,cn])
+}
+
+```
+
+```{r}
+set.seed(1122)
+eb <- edge.betweenness.community(collab_2016_g)
+ev <- leading.eigenvector.community(collab_2016_g)
+fg <- fastgreedy.community(collab_2016_g)
+wt <- walktrap.community(collab_2016_g)
+plot (eb,collab_2016_g)
+plot (ev,collab_2016_g)
+plot (fg,collab_2016_g)
+plot (wt,collab_2016_g)
+```
+Findings at below
+
+###Community Detection for unpaddled 'trust - 2016' network###
+```{r}
+set.seed(1122)
+eb <- edge.betweenness.community(trust_2016_g)
+ev <- leading.eigenvector.community(trust_2016_g)
+fg <- fastgreedy.community(trust_2016_g)
+wt <- walktrap.community(trust_2016_g)
+plot (eb,trust_2016_g)
+plot (ev,trust_2016_g)
+plot (fg,trust_2016_g)
+plot (wt,trust_2016_g)
+```
+
+Findings for Communities:
+
+* According to the result of three major communities algorithms, there are different numbers of communites formed.
+* We find that nodes included in the same community for trust network and contact network are almost the same regarding the application of various communities algorithms.
+* In this way, we could assume that people within the same trust communities are more likely to contact each other.
+
+###Block Model for 2015###
+```{r}
+# Plot the cluster dendrogram
+eq_2015 <-equiv.clust(list(collab_2015,t(collab_2015),trust_2015,t(trust_2015)), mode="digraph")
+eq_2015 <-equiv.clust(list(collab_2015,trust_2015), mode="digraph")
+plot(eq_2015)
+
+#Block model: 2015
+c_2015<-blockmodel(collab_2015,eq_2015,k=4)
+plot(c_2015)
+
+bimage_2015 <- c_2015$block.model
+bimage_2015
+bimage_2015[bimage_2015 < 0.5] <- 0
+bimage_2015
+bimage_2015[is.nan(bimage_2015)] <- 1
+
+gplot(bimage_2015, diag=TRUE, 
+      edge.lwd=bimage_2015*2.5, 
+      label=colnames(bimage_2015),
+      vertex.cex=sqrt(table(c_2015$block.membership))/.75,
+      gmode="digraph", vertex.sides=50, 
+      vertex.col=gray(1-diag(bimage_2015)))
+```
+
+Finding for blcok model of 2015:
+
+* From the result of the block model generated from 2015 social network dataset, four blocks are generalized from the contack network.
+* Among four blocks, block 3 is the largest, however there is no interaction between block 3 and the rest of the blocks.
+* For block 2, block a, block 4, connection are obvious among the three nodes. 
+* It is also worth noticing that Block 4, though the smallest, receives the most contact from nodes in Block 1 and Block 2.
+
+###Block Model for 2016###
+```{r}
+eq_2016 <-equiv.clust(list(collab_2016,t(collab_2016),trust_2016,t(trust_2016)), mode="digraph")
+eq_2016 <-equiv.clust(list(collab_2016,trust_2016), mode="digraph")
+plot(eq_2016)
+
+c_2016<-blockmodel(collab_2016,eq_2016,k=4)
+plot(c_2016)
+
+bimage_2016 <- c_2016$block.model
+bimage_2016
+bimage_2016[bimage_2016 < 0.5] <- 0
+bimage_2016
+bimage_2016[is.nan(bimage_2016)] <- 1
+
+gplot(bimage_2016, diag=TRUE, 
+      edge.lwd=bimage_2016*2.5, 
+      label=colnames(bimage_2016),
+      vertex.cex=sqrt(table(c_2016$block.membership))/.75,
+      gmode="digraph", vertex.sides=50, 
+      vertex.col=gray(1-diag(bimage_2016)))
+```
+
+Findings for block model of 2016:
+
+* From the result of the block model, four blocks are generalized from the contack network.
+* Among four blocks, block 1 is the largest, however there is no interaction between block 1 and the rest of the blocks.
+* For block 2, block 3, block 4, connection are obvious among the three nodes. And it is also worth noticing that Block 2 receives the most contact from nodes in Block 3 and Block 4.
+
+
+##Statistical Analysis##
+###Logistice Analysis - QAP###
+```{r}
+# Fit a transition from Time 1 to Time 2
+often2015.net <- asNetwork(of2015)
+often2016.net <- asNetwork(of2016)
+tru2015.net <- asNetwork(tru2015)
+tru2016.net <- asNetwork(tru2016)
+# often 2015 ~ trust 2015
+netlm2015 <- netlogit(often2015.net, list(tru2015.net), reps = 100)
+summary(netlm2015)
+```
+Analysis report at below
+```{r}
+# often 2016 ~ trust 2016
+netlm2016 <- netlogit(often2016.net, list(tru2016.net), reps = 100)
+summary(netlm2016)
+```
+Analysis report at below
+```{r}
+# trust 2015 ~ often 2015
+net2lm2015 <- netlogit(tru2015.net, list(often2015.net), reps = 100)
+summary(net2lm2015)
+```
+Analysis report at below
+```{r}
+# trust 2016 ~ often 2016
+net2lm2016 <- netlogit(tru2016.net, list(often2016.net), reps = 100)
+summary(net2lm2016)
+```
+Analysis report for QAP models:
+
+<p>In this part, the analysis would be done to figure out if there is any predict relationship between the networks. The X1 represents the independent variable in the model.<p/>
+
+<p>The model include the often2015~trust2015, often2016~ trust2016, trust2015~often2015, trust2015~often2015. Because these 4 models give out the results with the same trend, the related analysis will be discussed together. The odds of forming relationships(Exp(b)) are as followings:
+93.8,299.8,93.8,299.8, and their p-value are all 0. So, the concludsion can be done that predictive power is evident and significant.<p/>
+
+<p>These results make sense because of correspondsing to the common sense -- People are more willing to contact with the person they are trusted with and people are more likly to build up trustness by the accumulation of the commnunication.<p/>
+
+<p>The Pseudo-R^2 Measures are 0.557,0.559 0.527,0.559. It can be conclude that the ability of predicting the dependent variable better with knowledge of independent variable.<p/>
+
+###ERGM###
+```{r}
+set.seed(1234)
+# for trust 2015 network
+ergmtru2015 <- ergm(tru2015.net ~ edges + mutual + 
+                cyclicalties + transitiveties 
+                + nodematch("Sex")
+                + nodematch("Workgroup")
+                + nodematch("Race")
+                + nodematch("Cancer")
+                + nodematch("Obesity")
+                + nodematch("Diabetes")
+                + nodematch("Heart")
+                + nodematch("TA")
+                )
+ergmtru2015m <- ergm(tru2015.net ~ edges + mutual +transitiveties)
+summary(ergmtru2015m)
+```
+Analysis report at below
+```{r}
+# for trust 2016 network
+ergmtru2016 <- ergm(tru2016.net ~ edges + mutual + 
+                cyclicalties + transitiveties  
+                 + nodematch("Attendees")
+                + nodematch("Sex")
+                + nodematch("Workgroup")
+                + nodematch("Race")
+                + nodematch("Cancer")
+                + nodematch("Obesity")
+                + nodematch("Diabetes")
+                + nodematch("Heart")
+                + nodematch("TA"))
+ergmtru2016m <- ergm(tru2016.net ~ edges + mutual + 
+                cyclicalties + transitiveties  
+                 + nodematch("Attendees"))
+summary(ergmtru2016m)
+```
+Analysis report at below
+```{r}
+# for often 2015 network
+ergmof2015 <- ergm(often2015.net  ~ edges + mutual + 
+                cyclicalties + transitiveties
+                +nodematch("Sex")+ nodematch("Workgroup")
+                + nodematch("Race")
+                + nodematch("Cancer")
+                + nodematch("Obesity")
+                + nodematch("Diabetes")
+                + nodematch("Heart")
+                + nodematch("TA"))
+ergmof2015 <- ergm(often2015.net  ~ edges + mutual + transitiveties)
+summary(ergmof2015)
+```
+Analysis report at below
+```{r}
+# for trust 2016 network
+ergmof2016 <- ergm(often2016.net~ edges + mutual + 
+                cyclicalties + transitiveties + 
+                  nodematch("Attendees")
+                + nodematch("Sex")
+                + nodematch("Workgroup")
+                + nodematch("Race")
+                + nodematch("Cancer")
+                + nodematch("Obesity")
+                + nodematch("Diabetes")
+                + nodematch("Heart")
+                + nodematch("TA"))
+ergmof2016m <- ergm(often2016.net~ edges + mutual + transitiveties)
+summary(ergmof2016m)
+```
+
+Analysis report for ERGM model- The model would include the tru2015.net,tru2016.net,often2015.net and often2016.net. The analysis results varied from feasures. The details are following:
+
+* All the AIC and BIC of the models are under 1000, which means the models are relativly small and coule be accepted.
+* For the model tru2015.net, the edges, mutual, transitiveties are satistics sigificant because of small p-value.log-odds of these variables are -4.5878, 1.6072, and 1.9076 and the corresponding probability is exp (b) / (1+exp (b)): 0.01007273, 0.83302228, and 0.87074928. In other words, this network very easily happened tie occurring when a mutual composition is in the prensence(0.8330). The information inside the network is easy to transmit becuase of high transitiveties(0.8707). The human race has siginificant power to help to form the new ties.
+* For the model tru2016.net, the edges, mutual, cyclicalties, transitiveties, and Attendees are satistics sigificant because of small p-value.log-odds of these variables are -4.9757 ,1.4635 ,-0.6799, 2.4106, and 0.8125, and the corresponding probability is exp (b) / (1+exp (b)):0.006856351, 0.812067407,  0.336283622, 0.917632043 , and0.692641983. In other words, this network very hardly happened tie occurring(probobility of 0.0068 ) and easily form a mutual composition(0.810). The information inside the network is to transmit with probobility of 0.336. The Attendees has siginificant power to help to form the new ties.
+* For the model often2015.net, the edges, mutual, transitiveties,are satistics sigificant because of small p-value.log-odds of these variables are -4.8137, 3.7455, 1.3326, and the corresponding probability is exp (b) / (1+exp (b)):0.008052401, 0.976921391, and 0.791270380. In other words, this network very hardly happened tie occurring(probobility of0.008) and easily form a mutual composition(0.9769). The information inside the network is easy to transmit becuase of high transitiveties(0.791). 
+* For the model often2016.net, the edges, mutual, transitiveties,are satistics sigificant because of small p-value.log-odds of these variables are -4.1691, 1.3822, and 1.5039.  the corresponding probability is exp (b) / (1+exp (b)): 0.01523061, 0.79934410, and 0.81815543. In other words, this network very hardly happened tie occurring(probobility of 0.015) and easily form a mutual composition( 0.799). The information inside the network is easy to transmit becuase of high transitiveties(0.818). 
+
+###TERGM###
+
+```{r}
+# for often contact networks
+samplk12 <- stergm(list(often2015.net,often2016.net),
+formation=~edges+mutual+transitiveties+cyclicalties
+                + nodematch("Sex")
+                + nodematch("Workgroup")
+                + nodematch("Race")
+                + nodematch("Cancer")
+                + nodematch("Obesity")
+                + nodematch("Diabetes")
+                + nodematch("Heart")
+                + nodematch("TA"),
+dissolution=~edges+mutual+transitiveties+cyclicalties,
+estimate="CMLE")
+#summary(samplk12)
+samplk12m <- stergm(list(often2015.net,often2016.net),
+formation=~edges+mutual+transitiveties,
+dissolution=~edges+mutual,
+estimate="CMLE")
+summary(samplk12m)
+```
+
+```{r}
+# for trust networks
+samplk13 <- stergm(list(tru2015.net,tru2016.net),
+formation=~edges+mutual+transitiveties+cyclicalties+ nodematch("Attendees")
+                + nodematch("Sex")
+                + nodematch("Workgroup")
+                + nodematch("Race")
+                + nodematch("Cancer")
+                + nodematch("Obesity")
+                + nodematch("Diabetes")
+                + nodematch("Heart")
+                + nodematch("TA"),
+dissolution=~edges+mutual+transitiveties+cyclicalties,
+estimate="CMLE")
+#summary(samplk13)
+samplk13m <- stergm(list(tru2015.net,tru2016.net),
+formation=~edges+mutual+transitiveties+ nodematch("Attendees"),
+dissolution=~edges,
+estimate="CMLE")
+summary(samplk13m)
+```
+
+Findings for TERGM analysis:
+
+* All the AIC and BIC of the models are under 1000, which means the models are relativly small and coule be accepted.
+* For the model often2015.net~often2016.net, edges, mutual, and transitiveties are the  sigificant elements that can predict the model. Its log odds is -4.0637, 1.5196, and 0.7674, and the corresponding probability is exp (b) / (1+exp (b)):0.01689497, 0.82047957, and 0.68295819. The probility of tie curring with time go from 2015 to 2016 is 0.0169, and the probablity will increase up to 0.8205 with the presense of mutual ties, and up to 0.683 with the presence of transitivities.
+* For the model trust2015.net~trust2016.net, edges, mutual, transitiveties, and nodematch.Attendees are the  sigificant elements that can predict the model. Its log odds is -4.5013, 0.8682, 1.5328, and 0.7190, and the corresponding probability is exp (b) / (1+exp (b)):0.01097283, 0.70437102, 0.82241562, and 0.67238677. The probility of tie curring with time go from 2015 to 2016 is 0.01097, and the probablity will increase up to 0.7044 with the presense of mutual ties, and up to 0.8224 with the presence of transitivities, and up to 0.7190 if the person is an attendee.
+* In conclusion, with time sliding, both trust and often-contact networks would have much higher probablity of tie occurring with the presense of mutual ties and transitivities, while the trust network contains effect of Attendees attribute as well.
+
+###GOF for ERGM & TERGM###
+```{r}
+plot(gof(ergmtru2015m))
+```
+```{r}
+plot(gof(ergmtru2016m))
+```
+```{r}
+plot(gof(ergmof2015))
+```
+```{r}
+plot(gof(ergmof2016m))
+```
+```{r}
+plot(gof(samplk12m))
+```
+```{r}
+plot(gof(samplk13m))
+```
+
+Findings for GOF:
+
+* The GOF simulates the collaboration networks from the ERGM estimates, and compares the distribution in the simulated networks to the observed values.
+* The GOF graphs for collaboration networks looks not bad, since most of the observed distributions are in the range of boxplots that reflect networks simulated from the model.
+
+###MCMC for ERGM & TERGM###
+```{r}
+mcmc.diagnostics(ergmtru2015m)
+```
+```{r}
+mcmc.diagnostics(ergmtru2016m)
+```
+```{r}
+mcmc.diagnostics(ergmof2015)
+```
+```{r}
+mcmc.diagnostics(ergmof2016m)
+```
+```{r}
+mcmc.diagnostics(samplk12m)
+```
+```{r}
+mcmc.diagnostics(samplk13m)
+```
+
+Findings for MCMC diagnostics:
+
+* Most of the MCMC estimation above looks good, since the trace plots are basically stationary and well-mixed, the marginal density plots are centered at mean of 0 with bell-shaped.
+* The ergm analysis of often contact matrix in 2016 is not good. Giving out a relativly low p-value of 0.127, the distributio of simulation is skewed. 
+* In the tergm analys of between the often contact 2015 to 2016, the distribution contain the noisy harmonic with the joint p-value of 0.si43. This shown that these two models are not a good representation of the observed network and  the estimation process are affected. 
+
+There may be 3 reason to cause these problems: 
+
+* First, the simulation algorithm may fail to converge, and the sampled networks are thus not from the specified distribution;
+* Secondly, the model parameters used to simulate the networks are too different from the MLE;
+* Thirdly, the chosen dataset may contain the noise that affect the model
+
+In future, the more effect needed to be invest into these three direction to figure out the problem.
