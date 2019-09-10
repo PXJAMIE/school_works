@@ -1,0 +1,303 @@
+---
+title: "Project A - Pan"
+author: "Xiaojie Pan"
+date: "March 3, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# package preparation
+library(readxl)
+library(network)
+library(igraph)
+library(sna)
+library(intergraph)
+library(statnet)
+```
+
+```{r}
+# read original dataset as data frame
+attr <- as.data.frame(read_excel("Attributes.xlsx"))
+collab <- as.data.frame(read_excel("Collab.xlsx"))
+infoseek <- as.data.frame(read_excel("InfoSeek.xlsx"))
+```
+
+```{r}
+# get matrices
+col.m = as.matrix(collab[,-1])
+rownames(col.m) = collab[,1]
+diag(col.m) <- 0
+col.m = ifelse(col.m > 4, 1, 0)
+
+info.m = as.matrix(infoseek[,-1])
+rownames(info.m) = infoseek[,1]
+diag(info.m) <- 0
+info.m = ifelse(info.m > 4, 1, 0)
+```
+The collaboration and infoseek adjacency matrices are translated to the unweighted matrices first, where '1' in the new matrices indicates the previous level of rating above 2, and '0' indicates those below or including 2. 
+
+###define function to describe adjacency matrix###
+```{r}
+netDesc <- function(adjMat) {
+  if (dim(adjMat)[1] == dim(adjMat)[2]) {
+    n <- dim(adjMat)[1]
+    numx <- n*(n-1)/2
+    minx <- min(adjMat)
+    maxx <- max(adjMat)
+    sumx <- sum(adjMat)
+    meanx <- mean(adjMat)
+    stdx <- sd(adjMat)
+    varx <- stdx * stdx
+    enrmx <- sqrt(sum(adjMat^2))
+    colsumx <- colSums(adjMat)
+    rowsumx <- rowSums(adjMat)
+    rowsdx <- apply(adjMat, 1, sd)
+    colsdx <- apply(adjMat, 2, sd)
+    return(list(n=n,min=minx,max=maxx,
+                sum=sumx,std=stdx,var=varx,
+                eucnorm=enrmx,
+                rowsum=rowsumx,rowsd=rowsdx,
+                colsum=colsumx,colsd=colsdx))
+  }
+  else 
+    return("Not a square matrix")
+}
+
+# Collaboration Relationships
+col.desc = netDesc(col.m)
+```
+####Collaboration Relationships####
+* 'sum' indicates there are 3382 one-direction collaborations between two employees.
+* 'rowsum' has some extreme numbers, such as its number for D5R7 and D2R105 is 4, and D2R92 is 85. These illustrate that D5R7 and D2R105 rarely has asked for collaboration from others, and D2R92 has collaboration with other very often.
+* Similarly, extreme numbers in 'colsum' for D1R187(74) and D3R192(3) tells that D1R187 is asked for collaboration the most, and D3R192 is not popular to be asked.
+
+```{r}
+# InfoSeeking Relationshipes
+info.desc = netDesc(info.m)
+```
+####InfoSeeking Relationships####
+* 'sum' indicates there are 4010 on-direction information seeking between two employees.
+* 'rowsum' has some extreme numbers, such as its number for D3R34(9) and D2R92(182), which tells that D3R34 don't seek for information form others often, but D2R92 likes to seek information from others very much.
+* Similar, extreme numbers in 'colsum' for D5R143(8) and D3R39(8) and D1R66(84) tells that D1R66 is the most popular one to be asked for information, and D5R143 and D3R39 are not very often to be asked.
+
+###QAP netlm model###
+```{r}
+# build network with edges and attributes
+col.net = graph_from_adjacency_matrix(col.m)
+info.net = graph_from_adjacency_matrix(info.m)
+for(attributes in colnames(attr)[-1]) {
+     col.net <- set.vertex.attribute(col.net, attributes, 1:nrow(attr), value = attr[,attributes])
+     info.net <- set.vertex.attribute(info.net, attributes, 1:nrow(attr), value = attr[,attributes])
+}
+col.nw = asNetwork(col.net)
+info.nw = asNetwork(info.net)
+```
+
+```{r}
+# fit a netlm model
+nl.col.info <- netlogit(col.nw,info.nw,reps=100)
+summary(nl.col.info)
+```
+
+```{r}
+# fit a netlm model
+nl.info.col <- netlogit(info.nw,col.nw,reps=100)
+summary(nl.info.col)
+```
+
+In the QAP test, we focused on studying the relationships between two networks, and we fit both networks into netlogit model. 
+
+* Both models have very similar outputs, except the estimate log-odds for intercept. The model with COL as DV has beta 0 as -5.0802, which indicates that one would have log-odds of -5.0802 to form a collaboration tie with absence of info-seeking ties. The model with INFO as dependent variable has log-odds of -3.7087 to form an info-seeking ties with absence of collaboration ties. 
+* The log-odds for x1 in both models are the same with significant p-value of 0, and we can see the odds ratio for both is 300.616. It indicates that a new collaboration ties are 156.6 more likely to be formed in the presence of the info-seeking ties than in the absence of info-seeking ties. And vice versa. 
+* Since Chi-squared test of fit has p-value of 0, which we fail to reject the null hypothesis and conclude that there is no significant difference between observed and expected value. This means the model fits well.
+
+###ERGM for Collab###
+```{r}
+set.seed(1234)
+col.ergm.all = ergm(col.nw ~ edges + mutual +
+                nodematch("Department",diff=T) + 
+                nodefactor("Management.level") + 
+                nodematch("Gender",diff=T) + 
+                nodefactor("Tenure")+  
+                nodecov("Individual") + 
+                nodecov("Group") +
+                nodecov("Organization"))
+summary(col.ergm.all)
+```
+
+* The result for AIC in the model with every attribute (col.ergm.all) is NaN, indicating the model was crashed at the very first iteration. Thus, we have to build a new model and looking for small AIC.
+
+```{r}
+set.seed(1234)
+col.ergm.null <- ergm(col.nw ~ edges)
+summary(col.ergm.null)
+```
+```{r}
+plogis(coef(col.ergm.null)[['edges']])
+```
+
+* The null model outputs the estimated log-odds for edges is -2.98006. After pluging this number in to plogis code, the number tells that the probablitly of formaing any tie in collaboration network is 4.83%.
+
+```{r}
+set.seed(1234)
+col.ergm.2 <- ergm(col.nw ~ edges+mutual)
+summary(col.ergm.2)
+```
+```{r}
+plogis(coef(col.ergm.2)[['edges']]+coef(col.ergm.2)[['mutual']])
+```
+
+* The estimated log-odds for mutual in model col.ergm.2 is 3.4429, which indicates that the log-odds of the collaboration tie is 3.4429 times greater if the reciprocal tie is present. The probablity for forming a collaboration tie with presense of reciprocal tie is 46.16%.
+
+```{r}
+set.seed(1234)
+# modified ergm model for collaboration network
+col.ergm <- ergm(col.nw ~ edges + mutual +
+                nodematch("Department",diff=T,keep=2) + 
+                nodematch("Management.level",diff=T,keep=1) + 
+                nodematch("Tenure",diff=T,keep=c(1,2))+  
+                nodecov("Individual") + 
+                nodecov("Group"))
+summary(col.ergm)
+```
+
+The modified model outputs AIC as 4008, which is the best try-out we had, and small AIC value indicates this model is the preferred one.Every factors in this model has significant effects on collaboration ties.
+
+* From the original model, attribute 'Gender' and 'Organization' have shown no significant effect on collaboration ties, so they're removed from the model. Some other insignificant categories in some categorical attribute are removed as well. Only 'department.2', 'management.level.1' and 'tenure.1' and 'tenure.2' are remained, since they have significant effects on forming collaboration ties.
+```{r}
+plogis(coef(col.ergm)[['edges']])
+plogis(coef(col.ergm)[['edges']]+coef(col.ergm)[['mutual']])
+plogis(coef(col.ergm)[['edges']]+coef(col.ergm)[['nodematch.Department.2']])
+plogis(coef(col.ergm)[['edges']]+coef(col.ergm)[['nodematch.Management.level.1']])
+plogis(coef(col.ergm)[['edges']]+coef(col.ergm)[['nodematch.Tenure.1']])
+plogis(coef(col.ergm)[['edges']]+coef(col.ergm)[['nodematch.Tenure.2']])
+plogis(coef(col.ergm)[['edges']]+coef(col.ergm)[['nodecov.Individual']])
+plogis(coef(col.ergm)[['edges']]+coef(col.ergm)[['nodecov.Group']])
+```
+
+* The positive MLE esimated log-odds for attributes indicates more chance to form a collaboration tie with certain attribute, and a negative MLE esimtaed log-odds means less chance comparing to the baseline.
+* The estimated log-odds of edges in col.ergm tells us the log-odds of a collaboration tie is -3.58594, and the baseline probabality is 2.696%, when assuming all other factors are absent.
+* The MLE estimated log-odds of mutual indicates the log-odds of the collaboration tie is 3.32604 greater with the presence of reciprocal tie, the probablity for a collaboration tie is 43.54%
+* The MLE estimated log-odds of nodematch.Department.2 indicates the log-odds of the collaboration tie is 0.26017 greater if the member is working at Department 2, the probablity for a collaboration tie is 3.47%.
+* The MLE estimated log-odds of nodematch.Management.level.1 indicates the log-odds of the collaboration tie is 0.43542 less if the member is at mangement level 1, the probablity for a collaboration tie is 1.76%.
+* The MLE estimated log-odds of nodematch.Tenure.1 indicates the log-odds of the collaboration tie is 0.27933 less if the member has tenure of 1 year, the probablity for a collaboration tie is 2.05%.
+* The MLE estimated log-odds of nodematch.Tenure.2 indicates the log-odds of the collaboration tie is 0.60174 greater if the member has tenure of 2 year, the probablity for a collaboration tie is 4.81%.
+* The MLE estimated log-odds of nodecov.Indicidual indicates the log-odds of the collaboration tie is 0.20761 greater if the member has one unit higher individual productivity satisfaction, the probablity for a collaboration tie is 3.298%.
+* The MLE estimated log-odds of nodecov.Group indicates the log-odds of the collaboration tie is 0.15528 less if the member has one unit higher group productivity satisfaction, the probablity for a collaboration tie is 2.32%.
+
+```{r}
+col.gof = gof(col.ergm)
+plot(col.gof)
+```
+
+* The GOF simulates the collaboration networks from the ERGM estimates, and compares the distribution in the simulated networks to the observed values. 
+* The GOF graphs for collaboration networks looks not bad, since most of the observed distributions are in the range of boxplots that reflect networks simulated from the model.
+
+```{r}
+col_gof=gof(col.ergm, GOF=~model)
+col_gof
+```
+
+* The goodness of fit agianst the statistics included in the model shown above looks good, since all the p-values are very close to 1, which means the difference between the observed networks and simulations form the model is small.
+
+```{r}
+mcmc.diagnostics(col.ergm)
+```
+
+* Most of the MCMC estimation above looks good, since the trace plots are basically stationary and well-mixed, the marginal density plots are centered at mean of 0 with bell-shaped. 
+* Except for plots of Management.level.1 and Tenure.1, these plots looks skewed and we may modify the model for these attributes.
+* The joint p-value is 0.6433, which is not too small and indicates that our model fits well.
+
+###ERGM for Info-Seek###
+```{r}
+set.seed(1234)
+info.ergm.all = ergm(info.nw ~ edges + mutual +
+                nodematch("Department",diff=T) + 
+                nodefactor("Management.level") + 
+                nodematch("Gender",diff=T) + 
+                nodefactor("Tenure")+  
+                nodecov("Individual") + 
+                nodecov("Group") +
+                nodecov("Organization"))
+summary(info.ergm.all)
+```
+
+* The result for AIC in the model with every attribute (info.ergm.all) is NaN, indicating the model was crashed at the very first iteration. Thus, we have to build a new model and looking for small AIC.
+
+```{r}
+set.seed(1234)
+info.ergm.null <- ergm(info.nw ~ edges)
+summary(info.ergm.null)
+```
+```{r}
+plogis(coef(info.ergm.null)[['edges']])
+```
+
+* The null model outputs the estimated log-odds for edges is -2.6608. After pluging this number in to plogis code, the number tells that the probablitly of formaing any tie in info-seeking network is 6.53%.
+
+```{r}
+set.seed(1234)
+info.ergm.2 <- ergm(info.nw ~ edges+mutual)
+summary(info.ergm.2)
+```
+```{r}
+plogis(coef(info.ergm.2)[['edges']]+coef(info.ergm.2)[['mutual']])
+```
+
+* The estimated log-odds for mutual in model info.ergm.2 is 3.35571, which indicates that the log-odds of the collaboration tie is 3.35571 times greater if the reciprocal tie is present. The probablity for forming a collaboration tie with presense of reciprocal tie is 50.51%.
+
+```{r}
+set.seed(1234)
+# modified ergm model for collaboration network
+info.ergm <- ergm(info.nw ~ edges + mutual +
+                nodematch("Department",diff=T,keep=3) + 
+                nodematch("Tenure",diff=T,keep=2)+  
+                nodecov("Individual") + 
+                nodecov("Group"))
+summary(info.ergm)
+```
+
+The modified model outputs AIC as 4984, which is the best try-out we had, and small AIC value indicates this model is the preferred one.Every factors in this model has significant effects on info-seeking ties.
+* From the original model, attribute 'Gender' and 'Organization' have shown no significant effect on collaboration ties, so they're removed from the model. Some other insignificant categories in some categorical attribute are removed as well. Only 'department.3',and 'tenure.2' are remained, since they have significant effects on forming info-seeking ties.
+```{r}
+plogis(coef(info.ergm)[['edges']])
+plogis(coef(info.ergm)[['edges']]+coef(info.ergm)[['mutual']])
+plogis(coef(info.ergm)[['edges']]+coef(info.ergm)[['nodematch.Department.3']])
+plogis(coef(info.ergm)[['edges']]+coef(info.ergm)[['nodematch.Tenure.2']])
+plogis(coef(info.ergm)[['edges']]+coef(info.ergm)[['nodecov.Individual']])
+plogis(coef(info.ergm)[['edges']]+coef(info.ergm)[['nodecov.Group']])
+```
+
+* The positive MLE esimated log-odds for attributes indicates more chance to form a info-seeking tie with certain attribute, and a negative MLE esimtaed log-odds means less chance comparing to the baseline.
+* The estimated log-odds of edges in info.ergm tells us the log-odds of a info-seeking tie is -3.36413, and the baseline probabality is 3.34%, when assuming all other factors are absent.
+* The MLE estimated log-odds of mutual indicates the log-odds of the info-seeking tie is 3.30995 greater with the presence of reciprocal tie, the probablity for a info-seeking tie is 48.646%
+* The MLE estimated log-odds of nodematch.Department.3 indicates the log-odds of the info-seeking tie is 0.54382 less if the member is working at Department 3, the probablity for a info-seeking tie is 1.97%.
+* The MLE estimated log-odds of nodematch.Tenure.2 indicates the log-odds of the info-seeking tie is 0.52041 greater if the member has tenure of 1 year, the probablity for a collaboration tie is 5.50%.
+* The MLE estimated log-odds of nodecov.Indicidual indicates the log-odds of the info-seeking tie is 0.14852 greater if the member has one unit higher individual productivity satisfaction, the probablity for a info-seeking tie is 3.86%.
+* The MLE estimated log-odds of nodecov.Group indicates the log-odds of the info-seeking tie is 0.12763 less if the member has one unit higher group productivity satisfaction, the probablity for a info-seeking tie is 2.95%.
+
+```{r}
+info.gof = gof(info.ergm)
+plot(info.gof)
+```
+
+* The GOF simulates the info-seeking networks from the ERGM estimates, and compares the distribution in the simulated networks to the observed values. 
+* The GOF graphs for info-seeking networks looks not bad, since most of the observed distributions are in the range of boxplots that reflect networks simulated from the model.
+
+```{r}
+info_gof=gof(info.ergm, GOF=~model)
+info_gof
+```
+* The goodness of fit agianst the statistics included in the model shown above looks good, since all the p-values are very close to 1, which means the difference between the observed networks and simulations form the model is small.
+
+```{r}
+mcmc.diagnostics(info.ergm)
+```
+* Most of the MCMC estimation above looks good, since the trace plots are basically stationary and well-mixed, the marginal density plots are centered at mean of 0 with bell-shaped. 
+* Except for plots of Department.3 and Tenure.2, these plots looks skewed and we may modify the model for these attributes.
+* The joint p-value is 0.9281, which is very close to 1 and indicates that our model fits well.
+

@@ -1,0 +1,170 @@
+---
+title: "Project-A"
+author: "Xiaojie Pan"
+date: "February 24, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(readxl)
+library(network)
+library(igraph)
+library(NetData)
+library(sna)
+```
+
+```{r}
+attr <- read_excel("Attributes.xlsx")
+collab <- read_excel("Collab.xlsx")
+infoseek <- read_excel("InfoSeek.xlsx")
+```
+
+```{r}
+# first column is name
+# collab and infoseek are directed and weighted adjancy matrix
+colm=as.matrix(collab[,2:110])
+colnet=graph.adjacency(colm,mode="directed",weighted=TRUE,diag=FALSE)
+summary(colnet)
+plot.igraph(colnet,vertex.label=V(colnet)$name,layout=layout.fruchterman.reingold, vertex.label.color="black",edge.color="black",edge.width=E(colnet)$weight/3, edge.arrow.size=1.5,edge.curved=TRUE)
+
+infom=as.matrix(infoseek[,2:110])
+infonet=graph.adjacency(infom,mode="directed",weighted=TRUE,diag=FALSE)
+summary(infonet)
+plot.igraph(infonet,vertex.label=V(infonet)$name,layout=layout.fruchterman.reingold, vertex.label.color="black",edge.color="black",edge.width=E(infonet)$weight/3, edge.arrow.size=1.5,edge.curved=TRUE)
+
+```
+
+```{r}
+# define function to describe adjacency matrix
+netDesc <- function(adjMat) {
+  if (dim(adjMat)[1] == dim(adjMat)[2]) {
+    n <- dim(adjMat)[1]
+    numx <- n*(n-1)/2
+    minx <- min(adjMat)
+    maxx <- max(adjMat)
+    sumx <- sum(adjMat)
+    meanx <- mean(adjMat)
+    stdx <- sd(adjMat)
+    varx <- stdx * stdx
+    enrmx <- sqrt(sum(adjMat^2))
+    colsumx <- colSums(adjMat)
+    rowsumx <- rowSums(adjMat)
+    rowsdx <- apply(adjMat, 1, sd)
+    colsdx <- apply(adjMat, 2, sd)
+    return(list(n=n,min=minx,max=maxx,
+                sum=sumx,std=stdx,var=varx,
+                eucnorm=enrmx,
+                rowsum=rowsumx,rowsd=rowsdx,
+                colsum=colsumx,colsd=colsdx))
+  }
+  else 
+    return("Not a square matrix")
+}
+
+# Collaboration Relationships
+netDesc(colm)
+
+# InfoSeeking Relationshipes
+netDesc(infom)
+```
+
+```{r}
+library(reshape2)
+# get Edge lists
+col.el = melt(collab)
+info.el = melt(infoseek)
+# rename column names for edgelist dataset
+colnames(col.el) = c('ego', 'alter', 'col_tie')
+colnames(info.el) = c('ego', 'alter', 'info_tie')
+# merge into one edgelist with two tie
+tie.el <- merge(col.el, info.el, by.x=c('ego','alter'), by.y=c('ego','alter'),all.x=TRUE, all.y=TRUE)
+# make each tie to be 1, if the relationship is over 50% (>3)
+tie.el[c('col_tie','info_tie')] <- ifelse(tie.el[c('col_tie','info_tie')]>3,1,0)
+# subset edgelist to make every row has at least one non-zero column
+tie.el.nonzero =  subset(tie.el,(col_tie > 0 | info_tie > 0 ))
+head(tie.el.nonzero)
+```
+```{r}
+# summarize the network
+el_full <- graph.data.frame(tie.el.nonzero)
+summary(el_full)
+```
+```{r}
+# set vertex attributes
+for (i in V(el_full)) {
+  for (j in names(attr)) {
+    el_full <- set.vertex.attribute(el_full, j, index=i, attr[i,j])
+  }
+}
+```
+```{r}
+# 109 2268
+summary(el_full)
+```
+```{r}
+# collaboration network
+# 109 1649
+el_col = delete.edges(el_full, E(el_full)[get.edge.attribute(el_full,name = "col_tie")==0])
+summary(el_col)
+
+# infoseek network
+# 109 2113
+el_info = delete.edges(el_full, E(el_full)[get.edge.attribute(el_full,name = "info_tie")==0])
+summary(el_info)
+```
+```{r}
+library(intergraph)
+
+# convert the graphs
+info.nw = asNetwork(el_info)
+col.nw = asNetwork(el_col)
+
+# regression
+nl <- netlm(col.nw,info.nw,reps=100)
+summary(nl)
+
+# The model R-square (0.5727) indicates that knowing whether one persion is seeking information from another reduces uncertainty in predicting a collaboration relationship by  57.27%. The significance level (by the QAP method) is 0, so that we ensure that the observed result is non-random. If one person have not seek information frequently (>3) from another, the probability taht there is an collaboration relationshiop is about 1.6%. If the one seek infomation from another, the probablity of an collaboration relationship is increased by 68%. Also the infoseek effect is different from zero at conventional (0<0.5) levels.
+```
+```{r}
+#????????????????????/
+#size = length(V(el_info)$Gender)
+##gender = V(el_info)$Gender
+
+# general matrix function
+general_mat <- function(size, attr) {
+  attr = V(el_info)$Department
+  mat = matrix(rep(0,size*size),nrow=size,ncol=size)
+  for (i in 1:size) {
+    for (j in 1:size) {
+      if (i<j) {
+        mat[i,j] <- attr[j]-attr[i]
+      }
+      else if (i>j) {
+        mat[i,j] <- attr[j]-attr[i]
+      }
+      else
+        mat[i,j] <- 0
+    }
+  }
+  return (mat)
+}
+dep.mat=general_mat(size, Department)
+```
+
+
+
+
+
+
+###ERGM###
+
+
+##5. Discussion##
+
+
+##6. Conclusion##
+
