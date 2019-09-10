@@ -15,3 +15,4 @@ Here are projects and assignments done in master program of Business Analytics a
 | [[R-markdown] Social Networks Analysis within Employees](https://github.com/PXJAMIE/school_works/tree/master/6215_social_network/final_project/project_a) |
 | [[SAS] Time-Series Analysis on Bike-sharing System](https://github.com/PXJAMIE/school_works/tree/master/6219_time_series/final_project) |
 |[[NetLogo] Business Simulation Modeling of X-ray Process at Hospital](https://github.com/PXJAMIE/school_works/tree/master/6225_business_simulation/netlogo_modeling_project) |
+| [[Python] Predicting County-Level Crime Statistics using Machine Learning](https://github.com/PXJAMIE/school_works/tree/master/6279_data_mining/final_project) |
